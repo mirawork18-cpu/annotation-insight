@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Download, Upload, Search } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronLeft, ChevronRight, Download, Upload, Search, UserPlus, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface Job {
@@ -19,6 +20,10 @@ export interface Job {
   rejectReason?: string;
   reworkDate?: string;
   comment?: string;
+  batchId?: string;
+  assignedTo?: string;
+  assignedDate?: string;
+  assignedBy?: string;
 }
 
 interface JobTableProps {
@@ -26,6 +31,10 @@ interface JobTableProps {
   onJobUpdate?: (job: Job) => void;
   onImportCSV?: (file: File) => void;
   onExportCSV?: () => void;
+  batchId?: string;
+  showBatchControls?: boolean;
+  onJobAssign?: (jobIds: string[], assignedTo: string) => void;
+  qcResources?: string[];
 }
 
 const ITEMS_PER_PAGE = 20;
@@ -38,14 +47,32 @@ const statusColors = {
   "Pending": "muted",
 } as const;
 
-export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTableProps) {
+export function JobTable({ 
+  jobs, 
+  onJobUpdate, 
+  onImportCSV, 
+  onExportCSV, 
+  batchId,
+  showBatchControls = false,
+  onJobAssign,
+  qcResources = []
+}: JobTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [qcNameFilter, setQcNameFilter] = useState<string>("all");
+  const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
+  const [assignTo, setAssignTo] = useState<string>("");
 
   const filteredJobs = useMemo(() => {
-    return jobs.filter(job => {
+    let filteredList = jobs;
+    
+    // Filter by batch if specified
+    if (batchId) {
+      filteredList = filteredList.filter(job => job.batchId === batchId);
+    }
+    
+    return filteredList.filter(job => {
       const matchesSearch = searchTerm === "" || 
         job.jid.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.clientFileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -56,7 +83,7 @@ export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTab
       
       return matchesSearch && matchesStatus && matchesQCName;
     });
-  }, [jobs, searchTerm, statusFilter, qcNameFilter]);
+  }, [jobs, searchTerm, statusFilter, qcNameFilter, batchId]);
 
   const totalPages = Math.ceil(filteredJobs.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -79,12 +106,45 @@ export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTab
     }
   };
 
+  const handleJobSelection = (jobId: string, selected: boolean) => {
+    if (selected) {
+      setSelectedJobs(prev => [...prev, jobId]);
+    } else {
+      setSelectedJobs(prev => prev.filter(id => id !== jobId));
+    }
+  };
+
+  const handleSelectAll = (selected: boolean) => {
+    if (selected) {
+      setSelectedJobs(paginatedJobs.map(job => job.jid));
+    } else {
+      setSelectedJobs([]);
+    }
+  };
+
+  const handleBulkAssign = () => {
+    if (selectedJobs.length > 0 && assignTo && onJobAssign) {
+      onJobAssign(selectedJobs, assignTo);
+      setSelectedJobs([]);
+      setAssignTo("");
+    }
+  };
+
   return (
     <Card className="p-6 bg-gradient-card shadow-medium">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-foreground">Job Management</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">
+              {batchId ? `Batch Jobs` : 'Job Management'}
+            </h2>
+            {batchId && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Viewing jobs for {batchId} • {filteredJobs.length} jobs
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <Button 
               onClick={onExportCSV}
@@ -95,20 +155,48 @@ export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTab
               <Download size={16} />
               Export CSV
             </Button>
-            <div className="relative">
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileImport}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              />
-              <Button variant="secondary" size="sm" className="gap-2">
-                <Upload size={16} />
-                Import CSV
+            {!batchId && (
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileImport}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+                <Button variant="secondary" size="sm" className="gap-2">
+                  <Upload size={16} />
+                  Import CSV
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bulk Assignment Controls */}
+        {showBatchControls && selectedJobs.length > 0 && qcResources.length > 0 && (
+          <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
+            <div className="flex items-center gap-3">
+              <Users size={16} className="text-primary" />
+              <span className="text-sm font-medium">
+                {selectedJobs.length} jobs selected
+              </span>
+              <Select value={assignTo} onValueChange={setAssignTo}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Assign to..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {qcResources.map(resource => (
+                    <SelectItem key={resource} value={resource}>{resource}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button onClick={handleBulkAssign} size="sm" className="gap-2">
+                <UserPlus size={16} />
+                Assign Jobs
               </Button>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-4">
@@ -150,6 +238,14 @@ export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTab
           <table className="w-full border-collapse">
             <thead>
               <tr className="border-b border-border">
+                {showBatchControls && (
+                  <th className="text-left py-3 px-4 w-12">
+                    <Checkbox
+                      checked={selectedJobs.length === paginatedJobs.length && paginatedJobs.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </th>
+                )}
                 <th className="text-left py-3 px-4 font-semibold">Job ID</th>
                 <th className="text-left py-3 px-4 font-semibold">Client File</th>
                 <th className="text-left py-3 px-4 font-semibold">Data Status</th>
@@ -157,6 +253,7 @@ export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTab
                 <th className="text-left py-3 px-4 font-semibold">QC Name</th>
                 <th className="text-left py-3 px-4 font-semibold">QC Date</th>
                 <th className="text-left py-3 px-4 font-semibold">QC Status</th>
+                {showBatchControls && <th className="text-left py-3 px-4 font-semibold">Assigned To</th>}
                 <th className="text-left py-3 px-4 font-semibold">Actions</th>
               </tr>
             </thead>
@@ -164,8 +261,17 @@ export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTab
               {paginatedJobs.map((job, index) => (
                 <tr key={job.jid} className={cn(
                   "border-b border-border/50 hover:bg-muted/30 transition-colors",
-                  index % 2 === 0 ? "bg-background/50" : "bg-muted/10"
+                  index % 2 === 0 ? "bg-background/50" : "bg-muted/10",
+                  selectedJobs.includes(job.jid) && "bg-primary/5"
                 )}>
+                  {showBatchControls && (
+                    <td className="py-3 px-4">
+                      <Checkbox
+                        checked={selectedJobs.includes(job.jid)}
+                        onCheckedChange={(checked) => handleJobSelection(job.jid, checked as boolean)}
+                      />
+                    </td>
+                  )}
                   <td className="py-3 px-4 font-mono text-sm">{job.jid}</td>
                   <td className="py-3 px-4 max-w-[200px] truncate">{job.clientFileName}</td>
                   <td className="py-3 px-4">{job.dataStatus}</td>
@@ -177,6 +283,13 @@ export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTab
                       {job.qcStatus}
                     </Badge>
                   </td>
+                  {showBatchControls && (
+                    <td className="py-3 px-4 text-sm">
+                      {job.assignedTo || (
+                        <span className="text-muted-foreground">Unassigned</span>
+                      )}
+                    </td>
+                  )}
                   <td className="py-3 px-4">
                     <Select
                       value={job.qcStatus}
@@ -189,6 +302,7 @@ export function JobTable({ jobs, onJobUpdate, onImportCSV, onExportCSV }: JobTab
                         <SelectItem value="Accepted">Accepted</SelectItem>
                         <SelectItem value="Rejected">Rejected</SelectItem>
                         <SelectItem value="Output Not Found">ONF</SelectItem>
+                        <SelectItem value="Not Started">Not Started</SelectItem>
                       </SelectContent>
                     </Select>
                   </td>
