@@ -9,7 +9,7 @@ import {
   Users, 
   CheckCircle, 
   Clock, 
-  Brain, 
+  Brain,    
   Activity,
   Database,
   Settings,
