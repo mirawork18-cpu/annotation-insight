@@ -1,10 +1,8 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
+// Correct base path for GitHub Pages
 export default defineConfig({
   plugins: [react()],
-  base: "/annotation-insight/", // 👈 Important for GitHub Pages
-  build: {
-    outDir: "dist", // GitHub Pages expects files in dist
-  },
-});
+  base: '/annotation-insight/',
+})
